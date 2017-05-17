@@ -1,5 +1,14 @@
+import cv
 import cv2
 import numpy as np
+import string
+
+#define alphabet position
+position = 0
+#define hand position
+hand_position = 0,0
+hand_on_keyboard = False
+letter_selected = False
 
 
 def draw_rectangle(img_frame, coords):
@@ -20,47 +29,89 @@ def draw_rectangle(img_frame, coords):
     )
 
 
+def binarize_image(img):
+    # Transform into grayscale image.
+    img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+    # Blur image using a mean filter.
+    img_blur = cv2.GaussianBlur(img_gray, (5, 5), 0)
+
+    # Threshold image.
+    _, img_thresh = cv2.threshold(img_blur,
+                                  70,
+                                  255,
+                                  cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+
+    return img_thresh
+
+
+def create_opencv_capture():
+    capture = cv2.VideoCapture(0)
+
+    # Set frame resolution fixed. 
+    width, height = 1920, 1080
+    capture.set(cv.CV_CAP_PROP_FRAME_WIDTH, width)
+    capture.set(cv.CV_CAP_PROP_FRAME_WIDTH, height)    
+
+    return capture
+
+
+def draw_letters(frame):
+    x_pos, y_pos = 0, 50
+    #define font and text color
+    font_params = {
+        "type": cv2.FONT_HERSHEY_SIMPLEX,
+        "color": (0, 0, 255),
+        "size": 2,
+        "width": 3
+    }
+
+    # Put letters into the image.
+    for letter in list(string.ascii_lowercase):
+        x_pos += 60
+        cv2.putText(frame,
+                    letter,
+                    (x_pos, y_pos),
+                    font_params["type"],
+                    font_params["size"],
+                    font_params["color"],
+                    font_params["width"])
+
+
 def main():
     # Create Video capture from opencv.
-    cap = cv2.VideoCapture(0)
-
-    # for i in range(16):
-    #     flag, img = cap.read()
-    #     if not flag:
-    #         break
-    #     out = fg_bg.apply(img, learningRate=0.5)
+    cap = create_opencv_capture()
+    fgbg = cv2.BackgroundSubtractorMOG()
 
     while cap.isOpened():
         flag, img = cap.read()
+        composite = img.copy()
         if not flag:
             break
+        # Work only within the keyboard section.
+        keyboard_section = img[50:200, 0:img.shape[1]]
 
-        # hands = classifier.detectMultiScale(
-        #     img,
-        #     scaleFactor=1.1,
-        #     minNeighbors=5,
-        #     minSize=(30, 30),
-        #     flags=cv2.cv.CV_HAAR_SCALE_IMAGE
-        # )
+        # Drawing letters in the captured frame.
+        draw_letters(composite)
+
+        # Transform into a binary image.
+        # img_thresh = binarize_image(keyboard_section)
+        img_thresh = fgbg.apply(keyboard_section)
 
 
-        # for hand in hands:
-        #     draw_rectangle(img, hand)
-
-        img_gray = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
-        img_blur = cv2.GaussianBlur(img_gray,(5,5),0)
-        ret, img_thresh = cv2.threshold(img_blur, 70, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-        nonzero_pixels = cv2.findNonZero(img_thresh)
-        import ipdb; ipdb.set_trace()
-
-        # for contour in contours:
-        #     (x,y),radius = cv2.minEnclosingCircle(contour)
-        #     center = (int(x),int(y))
-        #     area = cv2.contourArea(contour)
-        #     if area > 1000 and area < 2000:
-        #         cv2.circle(img, center, int(radius),(0,120,255), thickness=5)
-        #         cv2.line(img, (center[0]-50,center[1]), (center[0]+50,center[1]), (0,0,0),3)
-        #         cv2.line(img, (center[0],center[1]-50), (center[0],center[1]+50), (0,0,0),3)
+        # Find contours in the thresholded image.
+        contours, hierarchy = cv2.findContours(img_thresh.copy(),
+                                               cv2.RETR_TREE,
+                                               cv2.CHAIN_APPROX_SIMPLE)
+        for contour in contours:
+            (x,y),radius = cv2.minEnclosingCircle(contour)
+            center = (int(x),int(y))
+            area = cv2.contourArea(contour)
+            print area
+            if area > 500 and area < 1500:
+                cv2.circle(composite, center, int(radius),(0, 0, 0), thickness=5)
+                cv2.line(composite, (center[0]-50,center[1]), (center[0]+50,center[1]), (0,0,0),3)
+                cv2.line(composite, (center[0],center[1]-50), (center[0],center[1]+50), (0,0,0),3)
 
         # for cnt in contours:
         #     (x,y),radius = cv2.minEnclosingCircle(cnt)
@@ -89,11 +140,12 @@ def main():
         # out = fg_bg.apply(img_thresh, learningRate=0)
 
         # Display.
-        # cv2.imshow('Keyboard', img)
-        # key = cv2.waitKey(25) & 0xFF
-        # if key == ord('q'):
-        #     break
-
+        cv2.imshow('image', composite)
+        cv2.imshow('Keyboard', img_thresh)
+        key = cv2.waitKey(25) & 0xFF
+        if key == ord('q'):
+            break
+    print("Done")
 
 if __name__ == '__main__':
     main()    
