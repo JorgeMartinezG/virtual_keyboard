@@ -53,6 +53,19 @@ def binarize_image(img, threshold_value):
     return img_thresh
 
 
+def check_counter(counter):
+    if len(counter.most_common()) != 0:
+        if counter.most_common(1)[0][1] == 10:
+            return True
+
+    return False
+
+
+def draw_and_reset(counter):
+    print counter.most_common(1)[0][0]
+    counter.clear()
+
+
 def compute_distances(center, letters):
     return [l2_norm(center, letter["position"]) for letter in letters]
 
@@ -183,6 +196,7 @@ def main():
                 contour_params["area"] < cnt_th_high):
                 draw_crosshair(composite, contour_params)
                 distances = compute_distances(contour_params["center"], letters)     
+
                 # Finding letter with closest distance to the crosshair.  
                 selected_letter = letters[distances.index(min(distances))]
                 counter[selected_letter["letter"]] += 1
@@ -197,12 +211,8 @@ def main():
         img_stacked = np.vstack([img_thresh, cv2.cvtColor(composite,
                                                           cv2.COLOR_BGR2GRAY)])
 
-        # If a letter has been selected for 10 frames,
-        # write the letter and clear the buffer
-        if len(counter.most_common()) != 0:
-            if counter.most_common(1)[0][1] == 10:
-                print counter.most_common(1)[0][0]
-                counter.clear()
+        if check_counter(counter):
+            draw_and_reset(counter)
 
         cv2.imshow(named_window, img_stacked)
         key = cv2.waitKey(25) & 0xFF
