@@ -1,14 +1,16 @@
-import cv
 import cv2
 import numpy as np
 import string
 
-#define alphabet position
-position = 0
-#define hand position
-hand_position = 0,0
-hand_on_keyboard = False
-letter_selected = False
+
+def get_contour_params(contour):
+    (x_pos, y_pos), radius = cv2.minEnclosingCircle(contour)
+
+    return {
+        "center": (int(x_pos), int(y_pos)),
+        "radius": radius,
+        "area": cv2.contourArea(contour)
+    }
 
 
 def draw_rectangle(img_frame, coords):
@@ -29,7 +31,7 @@ def draw_rectangle(img_frame, coords):
     )
 
 
-def binarize_image(img):
+def binarize_image(img, threshold_value):
     # Transform into grayscale image.
     img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
@@ -38,9 +40,13 @@ def binarize_image(img):
 
     # Threshold image.
     _, img_thresh = cv2.threshold(img_blur,
-                                  70,
+                                  threshold_value,
                                   255,
-                                  cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+                                  cv2.THRESH_BINARY_INV)
+
+    # perform image dilation with squared kernel
+    kernel = np.ones((5, 5), np.uint8)
+    img_thresh = cv2.dilate(img_thresh, kernel, iterations=2)
 
     return img_thresh
 
@@ -49,7 +55,7 @@ def create_opencv_capture():
     capture = cv2.VideoCapture(0)
 
     # Set frame resolution fixed. 
-    width, height = 1920, 1080
+    width, height = 640, 480
     capture.set(cv.CV_CAP_PROP_FRAME_WIDTH, width)
     capture.set(cv.CV_CAP_PROP_FRAME_WIDTH, height)    
 
@@ -57,7 +63,7 @@ def create_opencv_capture():
 
 
 def draw_letters(frame):
-    x_pos, y_pos = 0, 50
+    x_pos, y_pos = 0, 70
     #define font and text color
     font_params = {
         "type": cv2.FONT_HERSHEY_SIMPLEX,
@@ -68,7 +74,7 @@ def draw_letters(frame):
 
     # Put letters into the image.
     for letter in list(string.ascii_lowercase):
-        x_pos += 60
+        x_pos += 50
         cv2.putText(frame,
                     letter,
                     (x_pos, y_pos),
@@ -78,74 +84,84 @@ def draw_letters(frame):
                     font_params["width"])
 
 
+def draw_crosshair(img, params):
+    color = (0, 0, 0)
+    cv2.circle(img,
+               params["center"],
+               int(params["radius"]),
+               color,
+               thickness=5)
+    cv2.line(img,
+             (params["center"][0] - 50, params["center"][1]),
+             (params["center"][0] + 50, params["center"][1]),
+             color,
+             3)
+    cv2.line(img,
+             (params["center"][0], params["center"][1] - 50),
+             (params["center"][0], params["center"][1] + 50),
+             color,
+             3)
+
+
+def create_trackbar(named_window):
+    def nothing(x):
+        pass
+
+    cv2.namedWindow(named_window)
+    cv2.createTrackbar("threshold", named_window, 0, 255, nothing)
+
+    # Set starting value for thresholding.
+    cv2.setTrackbarPos("threshold", named_window, 65)
+
+
+def get_image(cap):
+    flag, img = cap.read()
+    img = cv2.flip(img, 1)
+    composite = cv2.resize(img.copy(), (800, 600))
+
+    return composite
+
+
 def main():
+    named_window = "Image"
     # Create Video capture from opencv.
-    cap = create_opencv_capture()
-    fgbg = cv2.BackgroundSubtractorMOG()
+    cap = cv2.VideoCapture(1)
+
+    # Create Image window and trackbar.
+    create_trackbar(named_window)
 
     while cap.isOpened():
-        flag, img = cap.read()
-        composite = img.copy()
-        if not flag:
-            break
+        composite = get_image(cap)
+
         # Work only within the keyboard section.
-        keyboard_section = img[50:200, 0:img.shape[1]]
+        keyboard_section = composite.copy()[20:100, :composite.shape[1]]
 
         # Drawing letters in the captured frame.
         draw_letters(composite)
 
         # Transform into a binary image.
-        # img_thresh = binarize_image(keyboard_section)
-        img_thresh = fgbg.apply(keyboard_section)
-
+        threshold_value = cv2.getTrackbarPos("threshold", "Image")
+        img_thresh = binarize_image(keyboard_section, threshold_value)
 
         # Find contours in the thresholded image.
         contours, hierarchy = cv2.findContours(img_thresh.copy(),
                                                cv2.RETR_TREE,
                                                cv2.CHAIN_APPROX_SIMPLE)
         for contour in contours:
-            (x,y),radius = cv2.minEnclosingCircle(contour)
-            center = (int(x),int(y))
-            area = cv2.contourArea(contour)
-            print area
-            if area > 500 and area < 1500:
-                cv2.circle(composite, center, int(radius),(0, 0, 0), thickness=5)
-                cv2.line(composite, (center[0]-50,center[1]), (center[0]+50,center[1]), (0,0,0),3)
-                cv2.line(composite, (center[0],center[1]-50), (center[0],center[1]+50), (0,0,0),3)
+            contour_params = get_contour_params(contour)
+            # Draw crosshair.
+            if contour_params["area"] > 700 and contour_params["area"] < 2000:
+                draw_crosshair(composite, contour_params)
 
-        # for cnt in contours:
-        #     (x,y),radius = cv2.minEnclosingCircle(cnt)
-        #     center = (int(x),int(y))
-        #     area = cv2.contourArea(cnt)
-        #     if area > 1000 and area < 2000:
-        #         radius = int(radius)
-        #         cv2.circle(composite,center,radius,(0,120,255), thickness=5)
-        #         cv2.line(composite, (center[0]-50,center[1]), (center[0]+50,center[1]), (0,0,0),3)
-        #         cv2.line(composite, (center[0],center[1]-50), (center[0],center[1]+50), (0,0,0),3)
+        img_stacked = np.vstack([img_thresh, cv2.cvtColor(composite,
+                                                          cv2.COLOR_BGR2GRAY)])
 
-
-        # cv2.drawContours(img_thresh, contours,-1,(0,255,0),3)
-        # max_area = 0
-        # for i in range(len(contours)):
-        #             cnt=contours[i]
-        #             area = cv2.contourArea(cnt)
-        #             if(area>max_area):
-        #                 max_area=area
-        #                 ci=i
-        # cnt=contours[ci]
-        # hull = cv2.convexHull(cnt)
-        # drawing = np.zeros(img.shape,np.uint8)
-        # cv2.drawContours(drawing,[cnt],0,(0,255,0),2)
-        # cv2.drawContours(drawing,[hull],0,(0,0,255),2)
-        # out = fg_bg.apply(img_thresh, learningRate=0)
-
-        # Display.
-        cv2.imshow('image', composite)
-        cv2.imshow('Keyboard', img_thresh)
+        cv2.imshow(named_window, img_stacked)
         key = cv2.waitKey(25) & 0xFF
         if key == ord('q'):
             break
     print("Done")
+
 
 if __name__ == '__main__':
     main()    
