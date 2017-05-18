@@ -1,4 +1,6 @@
+import collections
 import cv2
+import math
 import numpy as np
 import string
 
@@ -51,6 +53,15 @@ def binarize_image(img, threshold_value):
     return img_thresh
 
 
+def compute_distances(center, letters):
+    return [l2_norm(center, letter["position"]) for letter in letters]
+
+
+def l2_norm(point_1, point_2):
+    return math.sqrt((point_2[1] - point_1[1])**2 + 
+                     (point_2[0] - point_1[0])**2)
+
+
 def create_opencv_capture():
     capture = cv2.VideoCapture(0)
 
@@ -62,8 +73,17 @@ def create_opencv_capture():
     return capture
 
 
-def draw_letters(frame):
-    x_pos, y_pos = 0, 70
+def swipe_letters(contour_params, previous_position, letter_position):
+    if previous_position[0] > contour_params["center"][0]:
+        letter_position -=100
+    elif previous_position[0] < contour_params["center"][0]:
+        letter_position += 100
+
+    return letter_position
+
+
+def draw_letters(frame, x_pos):
+    y_pos = 70
     #define font and text color
     font_params = {
         "type": cv2.FONT_HERSHEY_SIMPLEX,
@@ -73,6 +93,7 @@ def draw_letters(frame):
     }
 
     # Put letters into the image.
+    letters_position = []
     for letter in list(string.ascii_lowercase):
         x_pos += 50
         cv2.putText(frame,
@@ -82,6 +103,9 @@ def draw_letters(frame):
                     font_params["size"],
                     font_params["color"],
                     font_params["width"])
+        letters_position.append({"letter": letter, "position": (x_pos, y_pos)})
+
+    return letters_position
 
 
 def draw_crosshair(img, params):
@@ -111,7 +135,7 @@ def create_trackbar(named_window):
     cv2.createTrackbar("threshold", named_window, 0, 255, nothing)
 
     # Set starting value for thresholding.
-    cv2.setTrackbarPos("threshold", named_window, 65)
+    cv2.setTrackbarPos("threshold", named_window, 80)
 
 
 def get_image(cap):
@@ -126,10 +150,15 @@ def main():
     named_window = "Image"
     # Create Video capture from opencv.
     cap = cv2.VideoCapture(1)
-
+    cnt_th_low, cnt_th_high = 700, 1500
     # Create Image window and trackbar.
     create_trackbar(named_window)
+    letter_position = 0
 
+    previous_position = (0, 0)
+
+    # Create letters counter.
+    counter = collections.Counter()
     while cap.isOpened():
         composite = get_image(cap)
 
@@ -137,7 +166,7 @@ def main():
         keyboard_section = composite.copy()[20:100, :composite.shape[1]]
 
         # Drawing letters in the captured frame.
-        draw_letters(composite)
+        letters = draw_letters(composite, letter_position)
 
         # Transform into a binary image.
         threshold_value = cv2.getTrackbarPos("threshold", "Image")
@@ -150,11 +179,30 @@ def main():
         for contour in contours:
             contour_params = get_contour_params(contour)
             # Draw crosshair.
-            if contour_params["area"] > 700 and contour_params["area"] < 2000:
+            if (contour_params["area"] > cnt_th_low and
+                contour_params["area"] < cnt_th_high):
                 draw_crosshair(composite, contour_params)
+                distances = compute_distances(contour_params["center"], letters)     
+                # Finding letter with closest distance to the crosshair.  
+                selected_letter = letters[distances.index(min(distances))]
+                counter[selected_letter["letter"]] += 1
+
+            # Swipe.
+            if contour_params["area"] > cnt_th_high:
+                letter_position = swipe_letters(contour_params,
+                                                previous_position,
+                                                letter_position)
+                previous_position = contour_params["center"]
 
         img_stacked = np.vstack([img_thresh, cv2.cvtColor(composite,
                                                           cv2.COLOR_BGR2GRAY)])
+
+        # If a letter has been selected for 10 frames,
+        # write the letter and clear the buffer
+        if len(counter.most_common()) != 0:
+            if counter.most_common(1)[0][1] == 10:
+                print counter.most_common(1)[0][0]
+                counter.clear()
 
         cv2.imshow(named_window, img_stacked)
         key = cv2.waitKey(25) & 0xFF
