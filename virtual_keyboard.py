@@ -2,6 +2,7 @@ import collections
 import cv2
 import math
 import numpy as np
+import optparse
 import string
 
 
@@ -97,13 +98,6 @@ def swipe_letters(contour_params, previous_position, letter_position):
 
 def draw_letters(frame, x_pos):
     y_pos = 70
-    #define font and text color
-    font_params = {
-        "type": cv2.FONT_HERSHEY_SIMPLEX,
-        "color": (0, 0, 255),
-        "size": 2,
-        "width": 3
-    }
 
     # Put letters into the image.
     letters_position = []
@@ -148,7 +142,7 @@ def create_trackbar(named_window):
     cv2.createTrackbar("threshold", named_window, 0, 255, nothing)
 
     # Set starting value for thresholding.
-    cv2.setTrackbarPos("threshold", named_window, 80)
+    cv2.setTrackbarPos("threshold", named_window, options.threshold)
 
 
 def get_image(cap):
@@ -161,17 +155,22 @@ def get_image(cap):
 
 def main():
     named_window = "Image"
+
     # Create Video capture from opencv.
-    cap = cv2.VideoCapture(1)
+    cap = cv2.VideoCapture(0)
     cnt_th_low, cnt_th_high = 700, 1500
+
     # Create Image window and trackbar.
-    create_trackbar(named_window)
+    if options.calibrate:
+        create_trackbar(named_window)
     letter_position = 0
 
-    previous_position = (0, 0)
-
     # Create letters counter.
-    counter = collections.Counter()
+    if not options.calibrate:
+        counter = collections.Counter()
+        previous_position = (0, 0)
+    threshold_value = options.threshold
+
     while cap.isOpened():
         composite = get_image(cap)
 
@@ -179,10 +178,20 @@ def main():
         keyboard_section = composite.copy()[20:100, :composite.shape[1]]
 
         # Drawing letters in the captured frame.
-        letters = draw_letters(composite, letter_position)
+        if not options.calibrate:
+            letters = draw_letters(composite, letter_position)
 
         # Transform into a binary image.
-        threshold_value = cv2.getTrackbarPos("threshold", "Image")
+        if options.calibrate:
+            threshold_value = cv2.getTrackbarPos("threshold", "Image")
+            cv2.putText(composite,
+                        "Threshold value: %d" % threshold_value,
+                        (20, composite.shape[0] - 20),
+                        font_params["type"],
+                        1,
+                        (255, 255, 255),
+                        2)
+
         img_thresh = binarize_image(keyboard_section, threshold_value)
 
         # Find contours in the thresholded image.
@@ -191,6 +200,17 @@ def main():
                                                cv2.CHAIN_APPROX_SIMPLE)
         for contour in contours:
             contour_params = get_contour_params(contour)
+            if options.calibrate:
+                cv2.putText(composite,
+                            "Contour Area: %d" % contour_params["area"],
+                            (20, composite.shape[0] - 50),
+                            font_params["type"],
+                            1,
+                            (255, 255, 255),
+                            2)
+
+                continue
+
             # Draw crosshair.
             if (contour_params["area"] > cnt_th_low and
                 contour_params["area"] < cnt_th_high):
@@ -208,18 +228,44 @@ def main():
                                                 letter_position)
                 previous_position = contour_params["center"]
 
-        img_stacked = np.vstack([img_thresh, cv2.cvtColor(composite,
-                                                          cv2.COLOR_BGR2GRAY)])
+        if not options.calibrate:
+            out_img = composite.copy()
+            if check_counter(counter):
+                draw_and_reset(counter)
+        else:
+            out_img = np.vstack([img_thresh, cv2.cvtColor(composite,
+                                                      cv2.COLOR_BGR2GRAY)])
 
-        if check_counter(counter):
-            draw_and_reset(counter)
-
-        cv2.imshow(named_window, img_stacked)
+        # Display output.
+        cv2.imshow(named_window, out_img)
         key = cv2.waitKey(25) & 0xFF
         if key == ord('q'):
             break
+
+    if options.calibrate:
+        print("Final threshold value %d" % threshold_value)
     print("Done")
 
 
 if __name__ == '__main__':
-    main()    
+    parser = optparse.OptionParser()
+    parser.add_option('-c', '--calibrate',
+                      dest='calibrate',
+                      action='store_true',
+                      default=False)
+    parser.add_option('-t', '--threshold',
+                      dest='threshold',
+                      type='int',
+                      default=70)
+    options, remainder = parser.parse_args()
+
+
+    #define font and text color
+    font_params = {
+        "type": cv2.FONT_HERSHEY_SIMPLEX,
+        "color": (0, 0, 255),
+        "size": 2,
+        "width": 3
+    }
+
+    main()
