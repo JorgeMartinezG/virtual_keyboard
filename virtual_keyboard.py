@@ -156,7 +156,7 @@ def main():
 
     # Create Video capture from opencv.
     cap = cv2.VideoCapture(0)
-    cnt_th_low, cnt_th_high = 700, 1500
+    cnt_th_low, cnt_th_high = 700, 2000
 
     # Create Image window and trackbar.
     if options.calibrate:
