@@ -62,11 +62,6 @@ def check_counter(counter):
     return False
 
 
-def draw_and_reset(counter):
-    print counter.most_common(1)[0][0]
-    counter.clear()
-
-
 def compute_distances(center, letters):
     return [l2_norm(center, letter["position"]) for letter in letters]
 
@@ -111,6 +106,9 @@ def draw_letters(frame, x_pos):
                     font_params["color"],
                     font_params["width"])
         letters_position.append({"letter": letter, "position": (x_pos, y_pos)})
+
+    # Add a line to show where the keyboard starts.
+    cv2.line(frame, (frame.shape[1], 100), (0, 100), (0, 255, 0), 3)
 
     return letters_position
 
@@ -169,6 +167,7 @@ def main():
     if not options.calibrate:
         counter = collections.Counter()
         previous_position = (0, 0)
+        selected_letters = ""
     threshold_value = options.threshold
 
     while cap.isOpened():
@@ -229,9 +228,20 @@ def main():
                 previous_position = contour_params["center"]
 
         if not options.calibrate:
-            out_img = composite.copy()
             if check_counter(counter):
-                draw_and_reset(counter)
+                selected_letters += counter.most_common(1)[0][0]
+                counter.clear()
+
+            # Displaying letters.
+            cv2.putText(composite,
+                        selected_letters,
+                        (20, 20),
+                        font_params["type"],
+                        1,
+                        (0, 255, 0),
+                        2)
+
+            out_img = composite.copy()
         else:
             out_img = np.vstack([img_thresh, cv2.cvtColor(composite,
                                                       cv2.COLOR_BGR2GRAY)])
@@ -241,6 +251,10 @@ def main():
         key = cv2.waitKey(25) & 0xFF
         if key == ord('q'):
             break
+        elif key == ord('d'):
+            selected_letters = selected_letters[:-1]
+        elif key == ord('c'):
+            selected_letters = ""
 
     if options.calibrate:
         print("Final threshold value %d" % threshold_value)
@@ -263,7 +277,7 @@ if __name__ == '__main__':
     #define font and text color
     font_params = {
         "type": cv2.FONT_HERSHEY_SIMPLEX,
-        "color": (0, 0, 255),
+        "color": (0, 255, 0),
         "size": 2,
         "width": 3
     }
