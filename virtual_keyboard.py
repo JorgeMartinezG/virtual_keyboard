@@ -16,24 +16,6 @@ def get_contour_params(contour):
     }
 
 
-def draw_rectangle(img_frame, coords):
-    """
-    Renders rectangles given coordinates and image frame.
-    Input
-    =====
-    img_frame: numpy array
-    coords: Tuple with x1, y1, x2, y2 coordinates
-    """
-    x_point, y_point, width, height = coords
-    cv2.rectangle(
-        img_frame,
-        (x_point, y_point),
-        (x_point + width, y_point + height),
-        (0, 255, 0),
-        2
-    )
-
-
 def binarize_image(img, threshold_value):
     # Transform into grayscale image.
     img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -49,7 +31,7 @@ def binarize_image(img, threshold_value):
 
     # perform image dilation with squared kernel
     kernel = np.ones((5, 5), np.uint8)
-    img_thresh = cv2.dilate(img_thresh, kernel, iterations=2)
+    img_thresh = cv2.dilate(img_thresh, kernel, iterations=3)
 
     return img_thresh
 
@@ -69,17 +51,6 @@ def compute_distances(center, letters):
 def l2_norm(point_1, point_2):
     return math.sqrt((point_2[1] - point_1[1])**2 + 
                      (point_2[0] - point_1[0])**2)
-
-
-def create_opencv_capture():
-    capture = cv2.VideoCapture(0)
-
-    # Set frame resolution fixed. 
-    width, height = 640, 480
-    capture.set(cv.CV_CAP_PROP_FRAME_WIDTH, width)
-    capture.set(cv.CV_CAP_PROP_FRAME_WIDTH, height)    
-
-    return capture
 
 
 def swipe_letters(contour_params, previous_position, letter_position):
@@ -155,7 +126,7 @@ def main():
     named_window = "Image"
 
     # Create Video capture from opencv.
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture(1)
     cnt_th_low, cnt_th_high = 700, 2000
 
     # Create Image window and trackbar.
